@@ -19,7 +19,10 @@ type GoormRpcServer struct {
 	UnimplementedGoormRpcV1Server
 	bindDevice string
 	directBind bool
+	client     *http.Client
 }
+
+const defaultRequestTimeout = 5 * time.Second
 
 func NewGoormRpcServer(bindDevice string, directBind bool) *GoormRpcServer {
 	server := &GoormRpcServer{
@@ -27,8 +30,7 @@ func NewGoormRpcServer(bindDevice string, directBind bool) *GoormRpcServer {
 		directBind: directBind,
 	}
 
-	// for testing
-	server.makeHttpClient()
+	server.client = server.makeHttpClient()
 
 	return server
 }
@@ -69,6 +71,9 @@ func getLocalIP(interfaceName string) (net.IP, error) {
 
 func (s *GoormRpcServer) makeHttpClient() *http.Client {
 	if s.bindDevice == "auto" {
+		if s.directBind {
+			panic("direct bind requires a specific network device")
+		}
 		return &http.Client{}
 	}
 
@@ -128,15 +133,26 @@ func (s *GoormRpcServer) makeHttpClient() *http.Client {
 	}
 }
 
-func httpNonGet(s *GoormRpcServer, req *HttpRequest, method string) (*HttpResponse, error) {
+func httpDo(ctx context.Context, s *GoormRpcServer, req *HttpRequest, method string, requestBody io.Reader) (*HttpResponse, error) {
 	log.Printf("%s Url=%s, Query=%v\n", method, req.Url, req.Query)
-	// Create HTTP request
-	httpReq, err := http.NewRequest(method, req.Url, bytes.NewReader(req.Body))
+
+	if req.TimeoutMs < 0 {
+		return nil, fmt.Errorf("timeout_ms must not be negative")
+	}
+
+	timeout := defaultRequestTimeout
+	if req.TimeoutMs > 0 {
+		timeout = time.Duration(req.TimeoutMs) * time.Millisecond
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, req.Url, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP %s request: %v", method, err)
 	}
 
-	// Add headers, query parameters, and cookies
 	for key, value := range req.Headers {
 		httpReq.Header.Set(key, value)
 	}
@@ -149,26 +165,22 @@ func httpNonGet(s *GoormRpcServer, req *HttpRequest, method string) (*HttpRespon
 		httpReq.AddCookie(&http.Cookie{Name: key, Value: value})
 	}
 
-	// Perform the HTTP request
-	client := s.makeHttpClient()
-	client.Timeout = time.Duration(req.TimeoutMs) * time.Millisecond
-
-	resp, err := client.Do(httpReq)
+	resp, err := s.client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to perform HTTP %s request: %v", method, err)
 	}
 	defer resp.Body.Close()
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read HTTP response body: %v", err)
 	}
 
-	// Create response
 	responseHeaders := make(map[string]string)
 	for key, values := range resp.Header {
-		responseHeaders[key] = values[0]
+		if len(values) > 0 {
+			responseHeaders[key] = values[0]
+		}
 	}
 	responseCookies := make(map[string]string)
 	for _, cookie := range resp.Cookies() {
@@ -179,80 +191,26 @@ func httpNonGet(s *GoormRpcServer, req *HttpRequest, method string) (*HttpRespon
 		StatusCode: int32(resp.StatusCode),
 		Headers:    responseHeaders,
 		Cookies:    responseCookies,
-		Body:       body,
-	}, nil
-}
-
-func httpGet(s *GoormRpcServer, req *HttpRequest) (*HttpResponse, error) {
-	log.Printf("%s Url=%s, Query=%v\n", "GET", req.Url, req.Query)
-	// Create HTTP request
-	httpReq, err := http.NewRequest("GET", req.Url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP GET request: %v", err)
-	}
-
-	// Add headers, query parameters, and cookies
-	for key, value := range req.Headers {
-		httpReq.Header.Set(key, value)
-	}
-	q := httpReq.URL.Query()
-	for key, value := range req.Query {
-		q.Add(key, value)
-	}
-	httpReq.URL.RawQuery = q.Encode()
-	for key, value := range req.Cookies {
-		httpReq.AddCookie(&http.Cookie{Name: key, Value: value})
-	}
-
-	// Perform the HTTP request
-	client := s.makeHttpClient()
-	client.Timeout = time.Duration(req.TimeoutMs) * time.Millisecond
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to perform HTTP GET request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read HTTP response body: %v", err)
-	}
-
-	// Create response
-	responseHeaders := make(map[string]string)
-	for key, values := range resp.Header {
-		responseHeaders[key] = values[0]
-	}
-	responseCookies := make(map[string]string)
-	for _, cookie := range resp.Cookies() {
-		responseCookies[cookie.Name] = cookie.Value
-	}
-	return &HttpResponse{
-		StatusCode: int32(resp.StatusCode),
-		Headers:    responseHeaders,
-		Cookies:    responseCookies,
-		Body:       body,
+		Body:       responseBody,
 	}, nil
 }
 
 func (s *GoormRpcServer) HttpGet(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
-	return httpGet(s, req)
+	return httpDo(ctx, s, req, "GET", nil)
 }
 
 func (s *GoormRpcServer) HttpPost(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
-	return httpNonGet(s, req, "POST")
+	return httpDo(ctx, s, req, "POST", bytes.NewReader(req.Body))
 }
 
 func (s *GoormRpcServer) HttpDelete(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
-	return httpNonGet(s, req, "DELETE")
+	return httpDo(ctx, s, req, "DELETE", bytes.NewReader(req.Body))
 }
 
 func (s *GoormRpcServer) HttpPut(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
-	return httpNonGet(s, req, "PUT")
+	return httpDo(ctx, s, req, "PUT", bytes.NewReader(req.Body))
 }
 
 func (s *GoormRpcServer) HttpPatch(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
-	return httpNonGet(s, req, "PATCH")
+	return httpDo(ctx, s, req, "PATCH", bytes.NewReader(req.Body))
 }
