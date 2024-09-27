@@ -129,6 +129,7 @@ func (s *GoormRpcServer) makeHttpClient() *http.Client {
 }
 
 func httpNonGet(s *GoormRpcServer, req *HttpRequest, method string) (*HttpResponse, error) {
+	log.Printf("%s Url=%s, Query=%v\n", method, req.Url, req.Query)
 	// Create HTTP request
 	httpReq, err := http.NewRequest(method, req.Url, bytes.NewReader(req.Body))
 	if err != nil {
@@ -183,6 +184,7 @@ func httpNonGet(s *GoormRpcServer, req *HttpRequest, method string) (*HttpRespon
 }
 
 func httpGet(s *GoormRpcServer, req *HttpRequest) (*HttpResponse, error) {
+	log.Printf("%s Url=%s, Query=%v\n", "GET", req.Url, req.Query)
 	// Create HTTP request
 	httpReq, err := http.NewRequest("GET", req.Url, nil)
 	if err != nil {
