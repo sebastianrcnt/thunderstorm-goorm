@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -142,6 +143,74 @@ func TestHttpGetRejectsNegativeTimeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "timeout_ms") {
 		t.Fatalf("error = %v, want timeout_ms validation error", err)
+	}
+}
+
+func TestHttpGetRejectsUnsupportedURLScheme(t *testing.T) {
+	server := NewGoormRpcServer("auto", false)
+	_, err := server.HttpGet(context.Background(), &HttpRequest{
+		Url: "file:///etc/passwd",
+	})
+	if err == nil {
+		t.Fatal("HttpGet returned nil error, want unsupported scheme error")
+	}
+	if !strings.Contains(err.Error(), "unsupported url scheme") {
+		t.Fatalf("error = %v, want unsupported scheme error", err)
+	}
+}
+
+func TestHttpGetAppliesPathParams(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/users/kim%20space" {
+			http.Error(w, got, http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	server := NewGoormRpcServer("auto", false)
+	resp, err := server.HttpGet(context.Background(), &HttpRequest{
+		Url:    upstream.URL + "/users/{id}",
+		Params: map[string]string{"id": "kim space"},
+	})
+	if err != nil {
+		t.Fatalf("HttpGet returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%q", resp.StatusCode, http.StatusOK, string(resp.Body))
+	}
+}
+
+func TestHttpGetRejectsBody(t *testing.T) {
+	server := NewGoormRpcServer("auto", false)
+	_, err := server.HttpGet(context.Background(), &HttpRequest{
+		Url:  "http://example.com",
+		Body: []byte("unexpected"),
+	})
+	if err == nil {
+		t.Fatal("HttpGet returned nil error, want body validation error")
+	}
+	if !strings.Contains(err.Error(), "GET request body") {
+		t.Fatalf("error = %v, want GET body validation error", err)
+	}
+}
+
+func TestHttpGetRejectsOversizedResponseBody(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("a"), maxResponseBodyBytes+1))
+	}))
+	defer upstream.Close()
+
+	server := NewGoormRpcServer("auto", false)
+	_, err := server.HttpGet(context.Background(), &HttpRequest{
+		Url: upstream.URL,
+	})
+	if err == nil {
+		t.Fatal("HttpGet returned nil error, want oversized body error")
+	}
+	if !strings.Contains(err.Error(), "response body exceeds") {
+		t.Fatalf("error = %v, want oversized body error", err)
 	}
 }
 

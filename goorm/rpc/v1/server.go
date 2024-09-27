@@ -8,7 +8,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +25,7 @@ type GoormRpcServer struct {
 }
 
 const defaultRequestTimeout = 5 * time.Second
+const maxResponseBodyBytes = 10 * 1024 * 1024
 
 func NewGoormRpcServer(bindDevice string, directBind bool) *GoormRpcServer {
 	server := &GoormRpcServer{
@@ -133,11 +136,52 @@ func (s *GoormRpcServer) makeHttpClient() *http.Client {
 	}
 }
 
+func applyURLParams(rawURL string, params map[string]string) string {
+	for key, value := range params {
+		rawURL = strings.ReplaceAll(rawURL, "{"+key+"}", url.PathEscape(value))
+	}
+	return rawURL
+}
+
+func validateRelayURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("unsupported url scheme %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("url host must not be empty")
+	}
+	return nil
+}
+
+func readResponseBody(body io.Reader) ([]byte, error) {
+	limited := io.LimitReader(body, maxResponseBodyBytes+1)
+	responseBody, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(responseBody) > maxResponseBodyBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxResponseBodyBytes)
+	}
+	return responseBody, nil
+}
+
 func httpDo(ctx context.Context, s *GoormRpcServer, req *HttpRequest, method string, requestBody io.Reader) (*HttpResponse, error) {
-	log.Printf("%s Url=%s, Query=%v\n", method, req.Url, req.Query)
+	if req == nil {
+		return nil, fmt.Errorf("request must not be nil")
+	}
+
+	targetURL := applyURLParams(req.Url, req.Params)
+	log.Printf("%s Url=%s, Query=%v\n", method, targetURL, req.Query)
 
 	if req.TimeoutMs < 0 {
 		return nil, fmt.Errorf("timeout_ms must not be negative")
+	}
+	if err := validateRelayURL(targetURL); err != nil {
+		return nil, err
 	}
 
 	timeout := defaultRequestTimeout
@@ -148,7 +192,7 @@ func httpDo(ctx context.Context, s *GoormRpcServer, req *HttpRequest, method str
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(ctx, method, req.Url, requestBody)
+	httpReq, err := http.NewRequestWithContext(ctx, method, targetURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP %s request: %v", method, err)
 	}
@@ -171,7 +215,7 @@ func httpDo(ctx context.Context, s *GoormRpcServer, req *HttpRequest, method str
 	}
 	defer resp.Body.Close()
 
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read HTTP response body: %v", err)
 	}
@@ -196,6 +240,9 @@ func httpDo(ctx context.Context, s *GoormRpcServer, req *HttpRequest, method str
 }
 
 func (s *GoormRpcServer) HttpGet(ctx context.Context, req *HttpRequest) (*HttpResponse, error) {
+	if len(req.GetBody()) > 0 {
+		return nil, fmt.Errorf("GET request body is not supported")
+	}
 	return httpDo(ctx, s, req, "GET", nil)
 }
 
