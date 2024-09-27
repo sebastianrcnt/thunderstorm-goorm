@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "Goorm",
+        "iface",
         "protobuf",
         "protoimpl",
         "protoreflect"

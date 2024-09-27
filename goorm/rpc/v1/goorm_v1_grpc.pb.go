@@ -22,8 +22,12 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GoormRpcV1Client interface {
-	HttpGet(ctx context.Context, in *HttpGetRequest, opts ...grpc.CallOption) (*HttpResponse, error)
-	HttpPost(ctx context.Context, in *HttpPostRequest, opts ...grpc.CallOption) (*HttpResponse, error)
+	// HTTP Relay Functions
+	HttpGet(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error)
+	HttpPost(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error)
+	HttpPut(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error)
+	HttpDelete(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error)
+	HttpPatch(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error)
 }
 
 type goormRpcV1Client struct {
@@ -34,7 +38,7 @@ func NewGoormRpcV1Client(cc grpc.ClientConnInterface) GoormRpcV1Client {
 	return &goormRpcV1Client{cc}
 }
 
-func (c *goormRpcV1Client) HttpGet(ctx context.Context, in *HttpGetRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
+func (c *goormRpcV1Client) HttpGet(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
 	out := new(HttpResponse)
 	err := c.cc.Invoke(ctx, "/GoormRpcV1/HttpGet", in, out, opts...)
 	if err != nil {
@@ -43,9 +47,36 @@ func (c *goormRpcV1Client) HttpGet(ctx context.Context, in *HttpGetRequest, opts
 	return out, nil
 }
 
-func (c *goormRpcV1Client) HttpPost(ctx context.Context, in *HttpPostRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
+func (c *goormRpcV1Client) HttpPost(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
 	out := new(HttpResponse)
 	err := c.cc.Invoke(ctx, "/GoormRpcV1/HttpPost", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goormRpcV1Client) HttpPut(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
+	out := new(HttpResponse)
+	err := c.cc.Invoke(ctx, "/GoormRpcV1/HttpPut", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goormRpcV1Client) HttpDelete(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
+	out := new(HttpResponse)
+	err := c.cc.Invoke(ctx, "/GoormRpcV1/HttpDelete", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goormRpcV1Client) HttpPatch(ctx context.Context, in *HttpRequest, opts ...grpc.CallOption) (*HttpResponse, error) {
+	out := new(HttpResponse)
+	err := c.cc.Invoke(ctx, "/GoormRpcV1/HttpPatch", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +87,12 @@ func (c *goormRpcV1Client) HttpPost(ctx context.Context, in *HttpPostRequest, op
 // All implementations must embed UnimplementedGoormRpcV1Server
 // for forward compatibility
 type GoormRpcV1Server interface {
-	HttpGet(context.Context, *HttpGetRequest) (*HttpResponse, error)
-	HttpPost(context.Context, *HttpPostRequest) (*HttpResponse, error)
+	// HTTP Relay Functions
+	HttpGet(context.Context, *HttpRequest) (*HttpResponse, error)
+	HttpPost(context.Context, *HttpRequest) (*HttpResponse, error)
+	HttpPut(context.Context, *HttpRequest) (*HttpResponse, error)
+	HttpDelete(context.Context, *HttpRequest) (*HttpResponse, error)
+	HttpPatch(context.Context, *HttpRequest) (*HttpResponse, error)
 	mustEmbedUnimplementedGoormRpcV1Server()
 }
 
@@ -65,11 +100,20 @@ type GoormRpcV1Server interface {
 type UnimplementedGoormRpcV1Server struct {
 }
 
-func (UnimplementedGoormRpcV1Server) HttpGet(context.Context, *HttpGetRequest) (*HttpResponse, error) {
+func (UnimplementedGoormRpcV1Server) HttpGet(context.Context, *HttpRequest) (*HttpResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HttpGet not implemented")
 }
-func (UnimplementedGoormRpcV1Server) HttpPost(context.Context, *HttpPostRequest) (*HttpResponse, error) {
+func (UnimplementedGoormRpcV1Server) HttpPost(context.Context, *HttpRequest) (*HttpResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HttpPost not implemented")
+}
+func (UnimplementedGoormRpcV1Server) HttpPut(context.Context, *HttpRequest) (*HttpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HttpPut not implemented")
+}
+func (UnimplementedGoormRpcV1Server) HttpDelete(context.Context, *HttpRequest) (*HttpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HttpDelete not implemented")
+}
+func (UnimplementedGoormRpcV1Server) HttpPatch(context.Context, *HttpRequest) (*HttpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HttpPatch not implemented")
 }
 func (UnimplementedGoormRpcV1Server) mustEmbedUnimplementedGoormRpcV1Server() {}
 
@@ -85,7 +129,7 @@ func RegisterGoormRpcV1Server(s grpc.ServiceRegistrar, srv GoormRpcV1Server) {
 }
 
 func _GoormRpcV1_HttpGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HttpGetRequest)
+	in := new(HttpRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -97,13 +141,13 @@ func _GoormRpcV1_HttpGet_Handler(srv interface{}, ctx context.Context, dec func(
 		FullMethod: "/GoormRpcV1/HttpGet",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GoormRpcV1Server).HttpGet(ctx, req.(*HttpGetRequest))
+		return srv.(GoormRpcV1Server).HttpGet(ctx, req.(*HttpRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _GoormRpcV1_HttpPost_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HttpPostRequest)
+	in := new(HttpRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -115,7 +159,61 @@ func _GoormRpcV1_HttpPost_Handler(srv interface{}, ctx context.Context, dec func
 		FullMethod: "/GoormRpcV1/HttpPost",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GoormRpcV1Server).HttpPost(ctx, req.(*HttpPostRequest))
+		return srv.(GoormRpcV1Server).HttpPost(ctx, req.(*HttpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoormRpcV1_HttpPut_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoormRpcV1Server).HttpPut(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/GoormRpcV1/HttpPut",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoormRpcV1Server).HttpPut(ctx, req.(*HttpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoormRpcV1_HttpDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoormRpcV1Server).HttpDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/GoormRpcV1/HttpDelete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoormRpcV1Server).HttpDelete(ctx, req.(*HttpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoormRpcV1_HttpPatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoormRpcV1Server).HttpPatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/GoormRpcV1/HttpPatch",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoormRpcV1Server).HttpPatch(ctx, req.(*HttpRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -134,6 +232,18 @@ var GoormRpcV1_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HttpPost",
 			Handler:    _GoormRpcV1_HttpPost_Handler,
+		},
+		{
+			MethodName: "HttpPut",
+			Handler:    _GoormRpcV1_HttpPut_Handler,
+		},
+		{
+			MethodName: "HttpDelete",
+			Handler:    _GoormRpcV1_HttpDelete_Handler,
+		},
+		{
+			MethodName: "HttpPatch",
+			Handler:    _GoormRpcV1_HttpPatch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -3,25 +3,22 @@ syntax = "proto3";
 option go_package = "goorm/rpc/v1";
 
 service GoormRpcV1 {
-  rpc HttpGet(HttpGetRequest) returns (HttpResponse) {}
-  rpc HttpPost(HttpPostRequest) returns (HttpResponse) {}
+  // HTTP Relay Functions
+  rpc HttpGet(HttpRequest) returns (HttpResponse) {}
+  rpc HttpPost(HttpRequest) returns (HttpResponse) {}
+  rpc HttpPut(HttpRequest) returns (HttpResponse) {}
+  rpc HttpDelete(HttpRequest) returns (HttpResponse) {}
+  rpc HttpPatch(HttpRequest) returns (HttpResponse) {}
 }
 
-message HttpGetRequest {
-  string url = 1;
-  map<string, string> headers = 2;
-  map<string, string> query = 3;
-  map<string, string> cookies = 4;
-  map<string, string> params = 5;
-}
-
-message HttpPostRequest {
+message HttpRequest {
   string url = 1;
   map<string, string> headers = 2;
   map<string, string> query = 3;
   map<string, string> cookies = 4;
   map<string, string> params = 5;
   bytes body = 6;
+  int32 timeout_ms = 7;
 }
 
 message HttpResponse {

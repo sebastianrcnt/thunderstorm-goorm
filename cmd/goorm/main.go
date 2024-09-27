@@ -23,7 +23,9 @@ func logRequests() grpc.UnaryServerInterceptor {
 
 func main() {
 	// parse flags
+	directBind := flag.Bool("direct-bind", false, "Direct bind to network device")
 	bindDevice := flag.String("bind-device", "auto", "Network device to bind to")
+
 	connectionTimeoutMilliseconds := flag.Int64("timeout", 5000, "Connection timeout in milliseconds")
 
 	flag.Parse()
@@ -36,7 +38,7 @@ func main() {
 		grpc.UnaryInterceptor(logRequests()),
 	)
 
-	rpc.RegisterGoormRpcV1Server(server, rpc.NewGoormRpcServer(*bindDevice))
+	rpc.RegisterGoormRpcV1Server(server, rpc.NewGoormRpcServer(*bindDevice, *directBind))
 	reflection.Register(server)
 
 	listener, err := net.Listen("tcp", ":50051")
@@ -44,7 +46,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	log.Printf("Server listening on :50051, bind device: %s, timeout: %d ms", *bindDevice, *connectionTimeoutMilliseconds)
+	log.Printf("Server listening on :50051, bind device: %s, direct bind: %v, timeout: %d ms", *bindDevice, *directBind, *connectionTimeoutMilliseconds)
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
