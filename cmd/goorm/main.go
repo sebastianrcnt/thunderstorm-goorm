@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	rpc "thunderstorm/goorm/rpc/v1"
 	"time"
 
@@ -21,14 +25,54 @@ func logRequests() grpc.UnaryServerInterceptor {
 	}
 }
 
+func configureLogOutput(logDir string) (*os.File, error) {
+	if logDir == "" {
+		return nil, nil
+	}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return nil, err
+	}
+	logFile, err := os.OpenFile(filepath.Join(logDir, "goorm.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+	return logFile, nil
+}
+
+func startMetricsServer(addr string) {
+	if addr == "" {
+		return
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", rpc.MetricsHandler())
+	go func() {
+		log.Printf("Metrics listening on %s/metrics", addr)
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Printf("metrics server failed: %v", err)
+		}
+	}()
+}
+
 func main() {
 	// parse flags
 	directBind := flag.Bool("direct-bind", false, "Direct bind to network device")
 	bindDevice := flag.String("bind-device", "auto", "Network device to bind to")
+	logDir := flag.String("log-dir", "", "Directory to write goorm.log; empty logs only to stderr")
+	metricsAddr := flag.String("metrics-addr", "", "Address for Prometheus metrics endpoint; empty disables metrics HTTP server")
 
 	connectionTimeoutMilliseconds := flag.Int64("timeout", 5000, "Connection timeout in milliseconds")
 
 	flag.Parse()
+
+	logFile, err := configureLogOutput(*logDir)
+	if err != nil {
+		log.Fatalf("failed to configure log output: %v", err)
+	}
+	if logFile != nil {
+		defer logFile.Close()
+	}
+	startMetricsServer(*metricsAddr)
 
 	// set server options - timeout to 5 seconds
 	server := grpc.NewServer(

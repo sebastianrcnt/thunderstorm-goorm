@@ -214,6 +214,38 @@ func TestHttpGetRejectsOversizedResponseBody(t *testing.T) {
 	}
 }
 
+func TestHttpPostRejectsOversizedRequestBody(t *testing.T) {
+	server := NewGoormRpcServer("auto", false)
+	_, err := server.HttpPost(context.Background(), &HttpRequest{
+		Url:  "http://example.com",
+		Body: bytes.Repeat([]byte("a"), maxRequestBodyBytes+1),
+	})
+	if err == nil {
+		t.Fatal("HttpPost returned nil error, want oversized body error")
+	}
+	if !strings.Contains(err.Error(), "request body exceeds") {
+		t.Fatalf("error = %v, want oversized body error", err)
+	}
+}
+
+func TestMetricsHandlerExportsPrometheusText(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+
+	MetricsHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "goorm_rpc_http_requests_total") {
+		t.Fatalf("metrics body = %q, want requests metric", body)
+	}
+	if !strings.Contains(rec.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("content-type = %q, want text/plain", rec.Header().Get("Content-Type"))
+	}
+}
+
 func TestDirectBindRequiresDevice(t *testing.T) {
 	defer func() {
 		if recover() == nil {
